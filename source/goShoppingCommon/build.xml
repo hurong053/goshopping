@@ -1,0 +1,171 @@
+<project name="shopping-common" default="compile" basedir=".">
+
+	<property name="app.name" value="shopping-common" />
+	<property name="app.path" value="/${app.name}" />
+	<property name="app.version" value="1.0.0" />
+	<property name="project.version" value="1.0.0" />
+
+	<property name="src.home" value="${basedir}/src" />
+	<property name="lib.home" value="${basedir}/lib" />
+	<property name="docs.home" value="${basedir}/docs" />
+	<property name="build.home" value="${basedir}/build" />
+	<property name="build.classes" value="${build.home}/classes" />
+	<property name="dist.home" value="${basedir}/dist" />
+	<property name="conf.home" value="${basedir}/conf" />
+
+	<property name="compile.debug" value="true" />
+	<property name="compile.deprecation" value="false" />
+	<property name="compile.optimize" value="true" />
+	<property name="compile.encoding" value="utf-8" />
+	<property name="compile.fork" value="true" />
+	<property name="compile.source" value="1.6" />
+
+	<property file="build.properties" />
+	<property file="build.properties.default" />
+
+	<path id="compile.classpath">
+		<!--		<fileset dir="${lib.home}">
+			<include name="*.jar" />
+		</fileset>
+		-->
+    <fileset dir="${lib.ext.common}">
+      <include name="*.jar"/>
+    </fileset>
+    
+    <filelist>
+		<file name="${common.jar}"/>
+    </filelist>
+ 
+	</path>
+
+	<!-- 有关svn的变量 -->
+	<target name="init.svn.variables">
+		<!-- 检查svn jar包是否存在 -->
+		<available file="svntask.jar" property="svntask.jar.available">
+			<filepath>
+				<pathelement location="${ant.home}/lib" />
+				<pathelement location="${lib.home}" />
+			</filepath>
+		</available>
+		<available file="svnkit.jar" property="svnkit.jar.available">
+			<filepath>
+				<pathelement location="${ant.home}/lib" />
+				<pathelement location="${lib.home}" />
+			</filepath>
+		</available>
+	</target>
+
+	<!-- 如果svn不存在，显示错误消息 -->
+	<target name="svntask.jar.available" depends="init.svn.variables" unless="svntask.jar.available">
+		<fail message="expecting svntask.jar" />
+	</target>
+	<target name="svnkit.jar.available" depends="init.svn.variables" unless="svnkit.jar.available">
+		<fail message="expecting svnkit.jar" />
+	</target>
+
+	<!-- 如果svn存在，定义任务 -->
+	<target name="init.svn.taskdefs" depends="svntask.jar.available, svnkit.jar.available" unless="taskdefs.svn.init">
+		<taskdef resource="com/googlecode/svntask/svntask.xml">
+			<!-- 此处需要下载svntask：http://code.google.com/p/svntask  -->
+			<!-- 然后将下面两个jar解压到ANT_HOME/lib目录下或直接放在lib -->
+			<!-- 目录下并取消下面的注释                                 -->
+			<classpath>
+				<pathelement location="${ant.home}/lib/svntask.jar" />
+				<pathelement location="${ant.home}/lib/svnkit.jar" />
+				<pathelement location="${lib.home}/svntask.jar" />
+				<pathelement location="${lib.home}/svnkit.jar" />
+			</classpath>
+		</taskdef>
+		<property name="taskdefs.svn.init" value="true" />
+	</target>
+
+	<target name="clean" description="Delete old build and dist directories">
+		<delete dir="${build.home}" />
+		<delete dir="${dist.home}" />
+	</target>
+
+	<target name="init" depends="init.svn.taskdefs" description="Create build directories as needed">
+		<mkdir dir="${build.home}" />
+		<mkdir dir="${dist.home}" />
+	</target>
+
+	<target name="compile" depends="init" description="Compile Java sources">
+		<mkdir dir="${build.classes}" />
+
+		<!--
+    <property name="build.compiler" value="${ajc.adapter}"></property>
+    -->
+
+		<!-- Compile Java classes as necessary -->
+		<javac destdir="${build.classes}" encoding="${compile.encoding}" debug="${compile.debug}" deprecation="${compile.deprecation}" optimize="${compile.optimize}" fork="${compile.fork}" source="${compile.source}" srcdir="${src.home}" includes="**/*.java" target="1.6">
+			<exclude name="**/ServiceMonitor.java" />
+			<classpath>
+				<path refid="compile.classpath" />
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="dist" depends="compile" description="Create binary distribution">
+		<!-- Copy documentation subdirectories -->
+		<!--
+    <mkdir dir="${dist.home}/docs"/>
+    <copy todir="${dist.home}/docs">
+      <fileset dir="${docs.home}"/>
+    </copy>
+    -->
+
+		<delete dir="${dist.home}" includes="${app.name}-${app.version}-r*.jar">
+		</delete>
+
+		<!-- Get revision number -->
+		<svn>
+			<info path="${basedir}" committedRevisionProperty="revision" />
+		</svn>
+
+		<!-- Create application JAR file -->
+		<jar destfile="${dist.home}/${app.name}-${app.version}-r${revision}.jar">
+			<fileset dir="${build.classes}">
+				<include name="**/*.class" />
+			</fileset>
+			<manifest>
+				<attribute name="Revision" value="${revision}" />
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="javadoc" depends="compile" description="Create Javadoc API documentation">
+		<mkdir dir="${dist.home}/docs/api" />
+		<javadoc sourcepath="${src.home}" destdir="${dist.home}/docs/api" encoding="${compile.encoding}" packagenames="*">
+			<classpath refid="compile.classpath" />
+		</javadoc>
+	</target>
+
+	<target name="dos2unix" description="dos2unix">
+		<replaceregexp match="&#13;&#10;" replace="&#10;" flags="g" byline="false">
+			<fileset dir="${conf.home}">
+				<include name="**" />
+			</fileset>
+			<fileset dir="${basedir}/build/classes">
+				<include name="**" />
+			</fileset>
+		</replaceregexp>
+	</target>
+
+	<target name="tar" depends="dist, dos2unix">
+		<property name="tar.basename" value="${app.name}-${app.version}">
+		</property>
+
+		<delete dir="${dist.home}" includes="${app.name}-**.tar.gz" />
+		<tar destfile="${dist.home}/${tar.basename}-bin.tar.gz" compression="gzip">
+			<tarfileset dir="${basedir}/dist" prefix="${tar.basename}/lib">
+				<include name="*jar" />
+			</tarfileset>
+			<tarfileset dir="${basedir}/conf" prefix="${tar.basename}/conf">
+				<include name="**" />
+			</tarfileset>
+			<tarfileset dir="${basedir}/lib" prefix="${tar.basename}/lib">
+				<include name="**.jar" />
+			</tarfileset>
+		</tar>
+	</target>
+</project>
